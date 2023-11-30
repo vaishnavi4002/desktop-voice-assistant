@@ -2,68 +2,90 @@
 session_start();
 
 // Check if the user is not logged in, redirect to the login page
-if (!isset($_SESSION["username"])) {
-    header("Location: login.php");
-    exit();
+if (!isset($_SESSION["user_id"])) {
+  header("Location: login.php");
+  exit();
 }
+
+
 
 include 'db1.php'; 
-
-function getTotalNotesCount()
+function getTotalNotesCount($user_id)
 {
     $conn = connectDB();
 
-    // Call the stored procedure
-    $result = mysqli_query($conn, "CALL getTotalNotesCount()");
+    // Use prepared statement to avoid SQL injection
+    $stmt = $conn->prepare("CALL getTotalNotesCountForUser(?)");
+    $stmt->bind_param("i", $user_id); // Assuming user_id is an integer, adjust the "i" if it's a different type
+    $stmt->execute();
+
+    // Bind result variables
+    $stmt->bind_result($totalNotes);
 
     // Fetch the result
-    $row = mysqli_fetch_assoc($result);
+    $stmt->fetch();
 
-    // Close the database connection
+    // Close the statement and connection
+    $stmt->close();
     mysqli_close($conn);
 
-    // Return the total count
-    return $row['TotalNotesCount'];
+    if ($totalNotes === null) {
+        // Handle the case where the stored procedure did not return a result
+        return 0; // Or any default value you want to use
+    }
+
+    return $totalNotes;
 }
 
-
 // Function to insert a new note
-function insertNote($title, $description)
+function insertNote($user_id,$title, $description)
 {
     $conn = connectDB();
-    
+     
     $title = mysqli_real_escape_string($conn, $title);
     $description = mysqli_real_escape_string($conn, $description);
 
-    $sql = "INSERT INTO `notes` (`title`, `description`) VALUES ('$title', '$description')";
+    $sql = "INSERT INTO `notes` (`user_id`, `title`, `description`) VALUES ('$user_id', '$title', '$description')";
     $result = mysqli_query($conn, $sql);
 
-    return $result;
+    if ($result) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 // Function to update an existing note
-function updateNote($sno, $title, $description)
+function updateNote($user_id,$sno, $title, $description)
 {
     $conn = connectDB();
-    
+    // $user_id = $_SESSION["user_id"];
     $title = mysqli_real_escape_string($conn, $title);
     $description = mysqli_real_escape_string($conn, $description);
 
-    $sql = "UPDATE `notes` SET `title` = '$title', `description` = '$description' WHERE `notes`.`sno` = $sno";
+    $sql = "UPDATE `notes` SET `title` = '$title', `description` = '$description' WHERE `user_id` = '$user_id' AND `sno` = $sno";
     $result = mysqli_query($conn, $sql);
 
-    return $result;
+    if ($result) {
+        return true;
+    } else {
+      echo "The record was not inserted successfully because of this error ---> " . mysqli_error($conn);
+    }
 }
 
 // Function to delete a note
 function deleteNote($sno)
 {
     $conn = connectDB();
-
-    $sql = "DELETE FROM `notes` WHERE `sno` = $sno";
+    $user_id = $_SESSION["user_id"];
+    $sql = "DELETE FROM `notes` WHERE `user_id` = '$user_id' AND `sno` = $sno";
     $result = mysqli_query($conn, $sql);
 
-    return $result;
+    if ($result) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 $insert = false;
@@ -74,27 +96,30 @@ $delete = false;
 $conn = connectDB();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['snoEdit'])) {
-        // Update the record
-        $sno = $_POST["snoEdit"];
-        $title = $_POST["titleEdit"];
-        $description = $_POST["descriptionEdit"];
+  $user_id = $_SESSION["user_id"];
+  if (isset($_POST['snoEdit'])) {
+      // Update the record
+      $sno = $_POST["snoEdit"];
+      $title = $_POST["titleEdit"];
+      $description = $_POST["descriptionEdit"];
 
-        $update = updateNote($sno, $title, $description);
-    } else {
-        $title = $_POST["title"];
-        $description = $_POST["description"];
+      $update = updateNote($user_id, $sno, $title, $description);
+  } else {
+      $title = $_POST["title"];
+      $description = $_POST["description"];
 
-        $insert = insertNote($title, $description);
-    }
+      $insert = insertNote($user_id, $title, $description);
+  }
 }
 
 if (isset($_GET['delete'])) {
-    $sno = $_GET['delete'];
-    $delete = deleteNote($sno);
+  $sno = $_GET['delete'];
+  $delete = deleteNote($sno);
 }
 ?>
 
+
+<!-- Rest of your HTML and JavaScript code... -->
 
 <!doctype html>
 <html lang="en">
@@ -108,16 +133,15 @@ if (isset($_GET['delete'])) {
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
     integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
   <link rel="stylesheet" href="//cdn.datatables.net/1.10.20/css/jquery.dataTables.min.css">
-  <link  rel="stylesheet" href="http://localhost:8080/php/style.css">
-  <script defer src="script.js"></script>
-
-
+    <link rel="stylesheet" href="style.css">
   <title>iNotes - Notes taking made easy</title>
 
 </head>
 
 <body>
+ 
 
+  <!-- Edit Modal -->
  <!-- Edit Modal -->
 <div class="modal fade" id="editModal" tabindex="-1" role="dialog" aria-labelledby="editModalLabel"
   aria-hidden="true">
@@ -196,24 +220,15 @@ if (isset($_GET['delete'])) {
         </li>
 
       </ul>
-      <<form class="form-inline my-2 my-lg-0" action="index.php" method="GET">
-    <input class="form-control mr-sm-2" type="search" placeholder="Search" aria-label="Search" name="search">
-    <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Search</button>
-        </form>
+      <form class="form-inline my-2 my-lg-0">
+        <input class="form-control mr-sm-2" type="search" placeholder="Search" aria-label="Search">
+        <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Search</button>
+      </form>
     </div>
   </nav>
 
 
-
   <?php
-  if (isset($_GET['search'])) {
-    $searchTerm = mysqli_real_escape_string($conn, $_GET['search']);
-    $sql = "SELECT * FROM `notes` WHERE `title` LIKE '%$searchTerm%' OR `description` LIKE '%$searchTerm%'";
-    } else {
-    $sql = "SELECT * FROM `notes`";
-    }
-
-$result = mysqli_query($conn, $sql);
   if($insert){
     echo "<div class='alert alert-success alert-dismissible fade show' role='alert'>
     <strong>Success!</strong> Your note has been inserted successfully
@@ -255,9 +270,8 @@ $result = mysqli_query($conn, $sql);
         <label for="desc">Note Description</label>
         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
       </div>
+      <input type="hidden" name="user_id" value=" <?php echo $_SESSION['user_id'];?>">
       <button type="submit" class="btn btn-primary">Add Note</button>
-      <button type="button" class="btn btn-secondary" id="startVoiceNote" onclick="startVoiceNote()">Start Voice Note</button>
-    <p id="voiceNoteStatus"></p>
     </form>
   </div>
 
@@ -274,7 +288,7 @@ $result = mysqli_query($conn, $sql);
       </thead>
       <tbody>
       <?php 
-    $sql = "SELECT * FROM `notes`";
+    $sql = "SELECT * FROM `notes` WHERE `user_id` = ".$_SESSION['user_id'];
     $result = mysqli_query($conn, $sql);
     $sno = 0;
     while($row = mysqli_fetch_assoc($result)){
@@ -293,7 +307,6 @@ $result = mysqli_query($conn, $sql);
   
 ?>
 
-
       </tbody>
     </table>
   </div>
@@ -301,7 +314,6 @@ $result = mysqli_query($conn, $sql);
   <!-- Optional JavaScript -->
   <!-- jQuery first, then Popper.js, then Bootstrap JS -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-
 
   <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
     integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
@@ -317,7 +329,6 @@ $result = mysqli_query($conn, $sql);
     });
   </script>
   <script>
-    
     edits = document.getElementsByClassName('edit');
     Array.from(edits).forEach((element) => {
       element.addEventListener("click", (e) => {
@@ -343,7 +354,7 @@ $result = mysqli_query($conn, $sql);
         if (confirm("Are you sure you want to delete this note!")) {
           console.log("yes");
           window.location = `/php/index.php?delete=${sno}`;
-        
+          // TODO: Create a form and use post request to submit a form
         }
         else {
           console.log("no");
@@ -361,6 +372,7 @@ Array.from(histories).forEach((element) => {
             url: 'history.php',
             data: { note_id: sno },
             success: function(data) {
+                // Display the history data (data) in a modal or a separate page
                 displayHistoryModal(data);
             },
             error: function(error) {
@@ -399,12 +411,13 @@ function displayHistoryModal(historyData) {
     $('#historyModal').modal('show');
 }
 
-
   </script>
-  <?php $totalNotesCount = getTotalNotesCount();?>
+ <?php 
+   $user_id = $_SESSION["user_id"];
+ $totalNotesCount = getTotalNotesCount($user_id); ?>
+  <h3><?php echo "Total number of notes: " . $totalNotesCount; ?></h3>
 
-     <h3><?php echo "Total number of notes: " . $totalNotesCount;?></h3>
-  
 </body>
 
 </html>
+
