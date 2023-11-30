@@ -26,10 +26,7 @@ function getTotalNotesCount()
     return $row['TotalNotesCount'];
 }
 
-$totalNotesCount = getTotalNotesCount();
 
-// Output the total number of notes
-echo "Total number of notes: " . $totalNotesCount;
 // Function to insert a new note
 function insertNote($title, $description)
 {
@@ -111,7 +108,7 @@ if (isset($_GET['delete'])) {
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
     integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
   <link rel="stylesheet" href="//cdn.datatables.net/1.10.20/css/jquery.dataTables.min.css">
-  <link rel="stylesheet" href="style.css">
+  <link  rel="stylesheet" href="http://localhost:8080/php/style.css">
   <script defer src="script.js"></script>
 
 
@@ -404,6 +401,9 @@ function displayHistoryModal(historyData) {
 
 
   </script>
+  <?php $totalNotesCount = getTotalNotesCount();?>
+
+     <h3><?php echo "Total number of notes: " . $totalNotesCount;?></h3>
   
 </body>
 
